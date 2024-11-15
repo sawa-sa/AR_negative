@@ -131,7 +131,7 @@
           const sphere = new THREE.Mesh(geometry, material);
           
           // 正規化した座標を適用
-          sphere.position.set(point.x, point.y+1, point.z);
+          sphere.position.set(point.x, point.y + 1, point.z);
           scatterGroup.add(sphere);
         });
 
