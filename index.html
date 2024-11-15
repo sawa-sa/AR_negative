@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Marker Based AR with AR.js and Three.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/110/three.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/3.1.0/three.js/build/ar.js"></script>
+    <script src="./CSVManager.js" type="module"></script>
+  </head>
+  <body>
+    <script type="module">
+      import { loadCSVData, normalizeData } from './CSVManager.js';
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true
+      });
+      renderer.setClearColor(new THREE.Color(), 0);
+      renderer.setSize(640, 480);
+      renderer.domElement.style.position = 'absolute';
+      renderer.domElement.style.top = '0px';
+      renderer.domElement.style.left = '0px';
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.visible = false;
+      const camera = new THREE.Camera();
+      scene.add(camera);
+
+      const arToolkitSource = new THREEx.ArToolkitSource({
+        sourceType: 'webcam'
+      });
+
+      arToolkitSource.init(() => {
+        setTimeout(() => {
+          onResize();
+        }, 2000);
+      });
+
+      addEventListener('resize', () => {
+        onResize();
+      });
+
+      function onResize() {
+        arToolkitSource.onResizeElement();
+        arToolkitSource.copyElementSizeTo(renderer.domElement);
+        if (arToolkitContext.arController !== null) {
+          arToolkitSource.copyElementSizeTo(arToolkitContext.arController.canvas);
+        }
+      }
+
+      const arToolkitContext = new THREEx.ArToolkitContext({
+        cameraParametersUrl: 'data/camera_para.dat',
+        detectionMode: 'mono'
+      });
+
+      arToolkitContext.init(() => {
+        camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+      });
+
+      const arMarkerControls = new THREEx.ArMarkerControls(arToolkitContext, camera, {
+        type: 'pattern',
+        patternUrl: 'data/patt.hiro',
+        changeMatrixMode: 'cameraTransformMatrix'
+      });
+
+      // グラフの軸と軸ラベルを追加する関数
+      function addAxesWithLabels() {
+        const axisMaterial = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 });
+
+        // X軸 (0,0,0) から (1,0,0) および (-1,0,0) まで
+        const xGeometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-1, 1, 0),
+          new THREE.Vector3(1, 1, 0)
+        ]);
+        const xAxis = new THREE.Line(xGeometry, axisMaterial);
+        scene.add(xAxis);
+
+        // Y軸 (0,0,0) から (0,1,0) および (0,-1,0) まで
+        const yGeometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(0, 2, 0)
+        ]);
+        const yAxis = new THREE.Line(yGeometry, axisMaterial);
+        scene.add(yAxis);
+
+        // Z軸 (0,0,0) から (0,0,1) および (0,0,-1) まで
+        const zGeometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 1, -1),
+          new THREE.Vector3(0, 1, 1)
+        ]);
+        const zAxis = new THREE.Line(zGeometry, axisMaterial);
+        scene.add(zAxis);
+
+        // 軸ラベルを追加する
+        const loader = new THREE.FontLoader();
+        loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+          const textMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.8 });
+
+          // X軸ラベル
+          const xTextGeometry = new THREE.TextGeometry('X', { font: font, size: 0.1, height: 0.01 });
+          const xLabel = new THREE.Mesh(xTextGeometry, textMaterial);
+          xLabel.position.set(1.1, 1, 0);
+          scene.add(xLabel);
+
+          // Y軸ラベル
+          const yTextGeometry = new THREE.TextGeometry('Y', { font: font, size: 0.1, height: 0.01 });
+          const yLabel = new THREE.Mesh(yTextGeometry, textMaterial);
+          yLabel.position.set(0, 2.1, 0);
+          scene.add(yLabel);
+
+          // Z軸ラベル
+          const zTextGeometry = new THREE.TextGeometry('Z', { font: font, size: 0.1, height: 0.01 });
+          const zLabel = new THREE.Mesh(zTextGeometry, textMaterial);
+          zLabel.position.set(0, 1, 1.1);
+          scene.add(zLabel);
+        });
+      }
+
+      // CSVデータを読み込み、正規化し、散布図として表示する関数
+      async function createScatterPlot() {
+        const data = await loadCSVData('data/points.csv');
+        const normalizedData = normalizeData(data);
+
+        // グループ化して、立方体の底面をマーカーに合わせる
+        const scatterGroup = new THREE.Group();
+        scatterGroup.position.set(0, 1, 0); // 底面の重心をマーカーの中心に
+
+        normalizedData.forEach(point => {
+          const geometry = new THREE.SphereGeometry(0.03, 16, 16); // 球のサイズを調整
+          const material = new THREE.MeshBasicMaterial({ color: 0x0000ff }); // 球の色を青に
+          const sphere = new THREE.Mesh(geometry, material);
+          
+          // 正規化した座標を適用
+          sphere.position.set(point.x, point.y, point.z);
+          scatterGroup.add(sphere);
+        });
+
+        scene.add(scatterGroup);
+      }
+
+      addAxesWithLabels(); // グラフの軸とラベルを追加
+      createScatterPlot(); // 散布図を作成
+
+      // スケール固定のためにループでリセット
+      const fixedScale = new THREE.Vector3(1, 1, 1);
+      requestAnimationFrame(function animate() {
+        requestAnimationFrame(animate);
+        if (arToolkitSource.ready) {
+          arToolkitContext.update(arToolkitSource.domElement);
+          scene.visible = camera.visible;
+        }
+
+        // スケールを固定
+        scene.scale.copy(fixedScale);
+        
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>
